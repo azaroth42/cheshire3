@@ -30,8 +30,10 @@ class OAIPMHWsgiApplication(object):
                          environ.get('SCRIPT_NAME', '').strip('/'),
                          environ.get('PATH_INFO', '').strip('/')
                          ])
+        if path[0] == '/':
+            path = path[1:]
         out = []
-        if path not in self.configs:
+        if not self.configs.has_key(path):
             # Unknown endpoint
             # No specification
             # TODO: send proper OAI error?

@@ -295,6 +295,7 @@ class Cheshire3OaiServer(object):
         # Tweak until value to make it inclusive
         until = until[:-1] + chr(ord(until[-1])+1)
         termList = idx.fetch_termList(session, from_, 0, '>=', end=until)
+
         # Create list of datestamp, resultSet tuples
         tuples = []
         for t in termList:
@@ -308,6 +309,24 @@ class Cheshire3OaiServer(object):
                     datetime.datetime.strptime(t[0], u'%Y-%m-%d %H:%M:%S'),
                     idx.construct_resultSet(session, t[1])
                 ))
+
+        # (azaroth42, 2015-08-23)
+        # Check if we should filter a recordStore (eg components)
+        # Better would be to not index them in the first place
+        # But the modificationDate is likely needed elsewhere too
+        stripStores = []
+        for k,v in idx.indexStore.storeHash.items():
+            store = idx.indexStore.get_object(session, v)
+            if store.get_setting(session, 'excludeFromPMH'):
+                stripStores.append(v) 
+
+        if stripStores:
+            for t in tuples:
+                rsis = t[1]._list
+                for rsi in reversed(rsis):
+                    if rsi.recordStore in stripStores:
+                        t[1]._list.remove(rsi)
+
         return tuples
 
     def listIdentifiers(self, metadataPrefix,
@@ -362,8 +381,12 @@ class Cheshire3OaiServer(object):
                     i += 1
                     continue
                 # Handle non-ascii characters in identifier
-                identifier = unicode(r.id, 'utf-8')
-                identifier = identifier.encode('ascii', 'xmlcharrefreplace')
+                try:
+                    identifier = unicode(r.id, 'utf-8')
+                    identifier = identifier.encode('ascii', 'xmlcharrefreplace')
+                except:
+                    # Default case of an integer
+                    identifier = str(r.id)
                 try:
                     r.fetch_record(session)
                 except ObjectDeletedException as e:
@@ -477,8 +500,14 @@ class Cheshire3OaiServer(object):
                     i += 1
                     continue
                 # Handle non-ascii characters in identifier
-                identifier = unicode(r.id, 'utf-8')
-                identifier = identifier.encode('ascii', 'xmlcharrefreplace')
+
+                try:
+                    identifier = unicode(r.id, 'utf-8')
+                    identifier = identifier.encode('ascii', 'xmlcharrefreplace')
+                except:
+                    # r.id might be an integer, per default load
+                    identifier = str(r.id)
+
                 try:
                     rec = r.fetch_record(session)
                 except ObjectDeletedException as e:

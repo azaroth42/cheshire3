@@ -3,7 +3,11 @@ from __future__ import with_statement
 import os
 import time
 import hashlib
-import bsddb as bdb
+
+try:
+    import bsddb3 as bdb
+except:
+    import bsddb as bdb
 import datetime
 import dateutil.tz
 import shutil

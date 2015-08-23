@@ -54,6 +54,14 @@ class SimpleRecordStore(RecordStore):
         }
     }
 
+    _possibleSettings = {
+        'excludeFromPMH': {
+            'docs': "If set, exclude all records in this store from OAI-PMH",
+            "type": int,
+            "options": "0|1"
+        }
+    }
+
     def __init__(self, session, config, parent):
         if (not self.paths):
             RecordStore.__init__(self, session, config, parent)
