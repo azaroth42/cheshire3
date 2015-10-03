@@ -387,27 +387,72 @@ class SaxToXmlHandler:
 class NumericPredicateException(C3Exception):
     pass
 
-
-class DomRecord(Record):
+class BaseRecord(Record):
+    xml = ""
+    history = []
+    rights = []
+    metadata = {}
+    wordCount = 0
+    byteCount = 0
+    parent = None
     context = None
-    size = 0
+    recordStore = None
+    dom = None
+    sax = []
+    resultSetItem = None
+    tagName = ''
+    status = ''
+    baseUri = ''
+    processHistory = []
 
     def __init__(self, data, xml="", docId=None, wordCount=0, byteCount=0):
-        self.dom = data
-        self.xml = xml
         self.id = docId
+        self.xml = xml
+        self.wordCount = wordCount
+        self.byteCount = byteCount
         self.parent = ('', '', -1)
-        self.context = None
+        self.recordStore = ""
         self.metadata = {}
-        if wordCount:
-            self.wordCount = wordCount
-        else:
+
+        self.history = []
+        self.rights = []
+     
+    def get_metadata(self):
+        md = self.metadata.copy()
+        md['wordCount'] = self.wordCount
+        md['byteCount'] = self.byteCount
+        if self.status:
+            md['status'] = self.status
+        if self.baseUri:
+            md['baseUri'] = self.baseUri
+        return md
+
+    def set_metadata(self, md):
+        try:
+            self.wordCount = md['wordCount']
+        except:
+            pass
+        try:
+            self.byteCount = md['byteCount']
+        except:
+            pass
+        self.metadata.update(md)
+        return self.metadata
+
+class DomRecord(Record):
+    dom = None
+    handler = None
+
+    def __init__(self, data, xml="", docId=None, wordCount=0, byteCount=0):
+        BaseRecord.__init__(self, data, xml, docId, wordCount, byteCount)
+        self.dom = data
+        if not self.wordCount:
             try:
                 # Sometimes this blows up
                 self.wordCount = len(flattenTexts(data).split())
             except:
-                self.wordCount = 0
-        self.byteCount = byteCount
+                pass
+        self.handler = None
 
     def _walk(self, node):
         pass
@@ -674,22 +719,17 @@ def parseOldXPath(p):
     return [xpObj, t]
 
 
-class SaxRecord(Record):
+class SaxRecord(BaseRecord):
+    sax = None
+    elementHash = {}
+    attrRe = None
 
     def __init__(self, data, xml="", docId=None, wordCount=0, byteCount=0):
+        BaseRecord.__init__(self, data, xml, docId, wordcount, byteCount)
         self.sax = data
-        self.id = docId
-        self.xml = xml
-        self.history = []
-        self.rights = []
         self.elementHash = {}
-        self.wordCount = wordCount
-        self.byteCount = byteCount
-        self.parent = ('', '', -1)
         self.attrRe = re.compile("u['\"](.+?)['\"]: u['\"](.*?)['\"](, |})")
-#        self.attrRe = re.compile("u(?P<quote>['\"])(.+?)(?P=quote): "
-#                                 "u(?P<quoteb>['\"])(.*?)(?P=quoteb)(, |})")
-        self.recordStore = ""
+
 
     def process_xpath(self, session, xpath, maps={}):
         if (not isinstance(xpath, list)):
@@ -1147,21 +1187,21 @@ class SaxRecord(Record):
         return index.indexStore.fetch_vector(session, index, self, summary)
 
 
-class MarcRecord(Record):
+class MarcRecord(BaseRecord):
     """For dealing with Library MARC Records."""
+    marc = None
+    decoder = None
+    asciiRe = None
 
     def __init__(self, data, xml="", docId=0, wordCount=0, byteCount=0):
-        txt = doc.get_raw(session)
-        self.marc = MARC(txt)
-        self.id = docId
-        # Estimate number of words...
-        display = str(self.marc)
-        if not wordCount:
+        BaseRecord.__init__(self, data, xml, docId, wordCount, byteCount)
+
+        self.marc = MARC(data.get_raw(session))
+        if not self.wordCount:
+            display = str(self.marc)
             wordCount = len(display.split()) - (len(display.split('\n')) * 2)
-        self.wordCount = wordCount
-        if byteCount:
-            self.byteCount = byteCount
-        else:
+            self.wordCount = wordCount
+        if not byteCount: 
             self.byteCount = len(display)
         self.decoder = MARC8_to_Unicode()
         self.asciiRe = re.compile('([\x0e-\x1f]|[\x7b-\xff])')

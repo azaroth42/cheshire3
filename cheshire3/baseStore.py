@@ -42,20 +42,9 @@ class DeletedObject(object):
         self.time = time
 
 
-class SummaryObject(object):
-    """ Allow database to have summary, but no storage """
+class MetadataStoringObject(object):
 
-    totalItems = 0
-    totalWordCount = 0
-    minWordCount = 0
-    maxWordCount = 0
-    meanWordCount = 0
-    totalByteCount = 0
-    minByteCount = 0
-    maxByteCount = 0
-    meanByteCount = 0
     lastModified = ''
-
     _possiblePaths = {
         'metadataPath': {
             'docs': "Path to file where the summary metadata will be kept."
@@ -81,35 +70,9 @@ class SummaryObject(object):
             else:
                 mp = os.path.join(dfp, mp)
         self.paths['metadataPath'] = mp
-        if (not os.path.exists(mp)):
-            # We don't exist, try and instantiate new database
+
+        if not os.path.exists(mp):
             self._create(session, mp)
-        else:
-            cxn = bdb.db.DB()
-            try:
-                cxn.open(mp)
-                # Now load values.
-                self.totalItems = long(cxn.get("totalItems"))
-                self.totalWordCount = long(cxn.get("totalWordCount"))
-                self.minWordCount = long(cxn.get("minWordCount"))
-                self.maxWordCount = long(cxn.get("maxWordCount"))
-
-                self.totalByteCount = long(cxn.get("totalByteCount"))
-                self.minByteCount = long(cxn.get("minByteCount"))
-                self.maxByteCount = long(cxn.get("maxByteCount"))
-
-                self.lastModified = str(cxn.get("lastModified"))
-
-                if self.totalItems != 0:
-                    self.meanWordCount = self.totalWordCount / self.totalItems
-                    self.meanByteCount = self.totalByteCount / self.totalItems
-                else:
-                    self.meanWordCount = 1
-                    self.meanByteCount = 1
-                cxn.close()
-            except:
-                # Doesn't exist in usable form
-                self._create(session, mp)
 
     def _initDb(self, session, dbt):
             dbp = dbt + "Path"
@@ -137,32 +100,82 @@ class SummaryObject(object):
         cxn.put("lastModified", time.strftime('%Y-%m-%d %H:%M:%S'))
         cxn.close()
 
-    def commit_metadata(self, session):
+    def _open(self, session, dbt):
+        dbp = dbt + "Path"
+        path = self.paths.get(dbp, '')
+        if not path:
+            self._initDb(session, dbt)
+            path = self.paths[dbp]
         cxn = bdb.db.DB()
-        mp = self.get_path(session, 'metadataPath')
-        if mp:
-            try:
+        cxn.open(path)
+        return cxn
+
+
+
+class SummaryObject(MetadataStoringObject):
+    """ Allow database to have summary metadata """
+
+    totalItems = 0
+    totalWordCount = 0
+    minWordCount = 0
+    maxWordCount = 0
+    meanWordCount = 0
+    totalByteCount = 0
+    minByteCount = 0
+    maxByteCount = 0
+    meanByteCount = 0
+
+    def __init__(self, session, config, parent):
+        # Don't want to inherit from database!
+        MetadataStoringObject.__init__(self, session, config, parent)
+        
+        cxn = self._open(session, 'metadata')
+        try:
+            # Now load values.
+            self.totalItems = long(cxn.get("totalItems"))
+            self.totalWordCount = long(cxn.get("totalWordCount"))
+            self.minWordCount = long(cxn.get("minWordCount"))
+            self.maxWordCount = long(cxn.get("maxWordCount"))
+            self.totalByteCount = long(cxn.get("totalByteCount"))
+            self.minByteCount = long(cxn.get("minByteCount"))
+            self.maxByteCount = long(cxn.get("maxByteCount"))
+            self.lastModified = str(cxn.get("lastModified"))
+
+            if self.totalItems != 0:
                 self.meanWordCount = self.totalWordCount / self.totalItems
                 self.meanByteCount = self.totalByteCount / self.totalItems
-            except ZeroDivisionError:
+            else:
                 self.meanWordCount = 1
                 self.meanByteCount = 1
+            cxn.close()
+        except:
+            # Doesn't exist in usable form
+            self._create(session, mp)
 
-            self.lastModified = time.strftime('%Y-%m-%d %H:%M:%S')
-            try:
-                cxn.open(mp)
-                cxn.put("totalItems", str(self.totalItems))
-                cxn.put("totalWordCount", str(self.totalWordCount))
-                cxn.put("minWordCount", str(self.minWordCount))
-                cxn.put("maxWordCount", str(self.maxWordCount))
-                cxn.put("totalByteCount", str(self.totalByteCount))
-                cxn.put("minByteCount", str(self.minByteCount))
-                cxn.put("maxByteCount", str(self.maxByteCount))
-                cxn.put("lastModified", self.lastModified)
-                cxn.close()
-            except:
-                # TODO: Nicer failure?
-                raise
+
+    def commit_metadata(self, session):
+        cxn = self._open(session, 'metadata')
+        try:
+            self.meanWordCount = self.totalWordCount / self.totalItems
+            self.meanByteCount = self.totalByteCount / self.totalItems
+        except ZeroDivisionError:
+            self.meanWordCount = 1
+            self.meanByteCount = 1
+
+        self.lastModified = time.strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            cxn.put("totalItems", str(self.totalItems))
+            cxn.put("totalWordCount", str(self.totalWordCount))
+            cxn.put("minWordCount", str(self.minWordCount))
+            cxn.put("maxWordCount", str(self.maxWordCount))
+            cxn.put("totalByteCount", str(self.totalByteCount))
+            cxn.put("minByteCount", str(self.minByteCount))
+            cxn.put("maxByteCount", str(self.maxByteCount))
+            cxn.put("lastModified", self.lastModified)
+            cxn.close()
+        except:
+            # TODO: Nicer failure?
+            raise
 
     def accumulate_metadata(self, session, obj):
         self.totalItems += 1
@@ -340,6 +353,8 @@ class SimpleStore(C3Object, SummaryObject):
         return self.get_dbSize(session)
 
     def get_storageTypes(self, session):
+        # Database is the main storage for this store
+        # Others are all metadata about the stored objects
         return ['database']
 
     def get_reverseMetadataTypes(self, session):
@@ -1094,11 +1109,10 @@ class BdbStore(SimpleStore):
                 id = id.encode('utf-8')
             elif type(id) != str:
                 id = str(id)
-#        self.log_debug(session, mType)
         cxn = self._openDb(session, mType)
-#        self.log_debug(session, cxn)
         if cxn is not None:
             data = cxn.get(id)
+            # Urgh, magic.  Everything could just be a pickle
             if data:
                 if data.startswith("\0http://www.cheshire3.org/ns/"
                                    "datatype/PICKLED:"):

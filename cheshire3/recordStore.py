@@ -129,17 +129,21 @@ class SimpleRecordStore(RecordStore):
         else:
             data = rec.get_xml(session)
 
+
         dig = self.generate_checkSum(session, data)
-        md = {'byteCount': rec.byteCount,
-              'wordCount': rec.wordCount,
-              'digest': dig}
-        # check for expires
         e = self.generate_expires(session, rec)
+
+        md  = {}
+        if dig:
+            md['digest'] = dig
         if e:
             md['expires'] = e
-        # Object metadata will overwrite generated (intentionally)
-        md2 = rec.metadata
-        md.update(md2)
+        if md:
+            rec.set_metadata(session, md)
+
+        # Fetch it all back
+        md = rec.get_metadata(session)
+
         # Might raise ObjectAlreadyExistsException
         self.store_data(session, rec.id, data, metadata=md)
         # Now accumulate metadata
@@ -160,6 +164,8 @@ class SimpleRecordStore(RecordStore):
         data = self.fetch_data(session, id)
         if (data):
             rec = self._process_data(session, id, data, parser)
+            
+
             # fetch metadata
             for attr in ['byteCount', 'wordCount', 'digest']:
                 try:

@@ -129,6 +129,14 @@ class Database(C3Object):
         """
         raise NotImplementedError
 
+    def get_metadata(self, session):
+        """Get the metadata for this database as a dict"""
+        raise(NotImplementedError)
+
+    def set_metadata(self, session):
+        """Set metadata from a dict for this database"""
+        raise(NotImplementedError)
+
     def commit_metadata(self, session):
         """Ensure persistence of database metadata."""
         raise(NotImplementedError)

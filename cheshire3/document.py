@@ -42,3 +42,10 @@ class StringDocument(Document):
         start = min(0, chr - 10)
         end = min(chr + 70, len(l))
         return l[start:end]
+
+    def get_metadata(self, session):
+        return self.metadata
+
+    def set_metadata(self, session, md):
+        self.metdata.update(md)
+        
